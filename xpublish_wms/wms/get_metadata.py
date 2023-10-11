@@ -10,7 +10,6 @@ from xpublish_wms.utils import da_bbox, format_timestamp
 
 from .get_map import GetMap
 
-
 def get_metadata(ds: xr.Dataset, cache: cachey.Cache, params: dict) -> Response:
     """
     Return the WMS metadata for the dataset
@@ -18,14 +17,14 @@ def get_metadata(ds: xr.Dataset, cache: cachey.Cache, params: dict) -> Response:
     This is compliant subset of ncwms2's GetMetadata handler. Specifically, layerdetails, timesteps and minmax are supported.
     """
     layer_name = params.get("layername", None)
-    metadata_type = params.get("item", "layerdetails")
+    metadata_type = params.get("item", "layerdetails").lower()
 
-    if not layer_name and metadata_type != "minmax":
+    if not layer_name and metadata_type != "minmax" and metadata_type != "menu":
         raise HTTPException(
             status_code=400,
             detail="layerName must be specified",
         )
-    elif layer_name not in ds and metadata_type != "minmax":
+    elif layer_name not in ds and metadata_type != "minmax" and metadata_type != "menu":
         raise HTTPException(
             status_code=400,
             detail=f"layerName {layer_name} not found in dataset",
@@ -38,6 +37,8 @@ def get_metadata(ds: xr.Dataset, cache: cachey.Cache, params: dict) -> Response:
         payload = get_timesteps(da, params)
     elif metadata_type == "minmax":
         payload = get_minmax(ds, cache, params)
+    elif metadata_type == "menu":
+        payload = get_menu(ds)
     else:
         raise HTTPException(
             status_code=400,
@@ -122,3 +123,25 @@ def get_layer_details(ds: xr.Dataset, layer_name: str) -> dict:
         "elevation_units": elevation_units,
         "timesteps": timesteps,
     }
+
+
+def get_menu(ds: xr.Dataset):
+    """
+    Returns the dataset menu items for the xreds viewer
+    TODO - support grouped layers?
+    """
+    results = {
+        "children": [],
+        "label": ds.attrs.get("title", "")
+    }
+
+    for var in ds.data_vars:
+        da = ds[var]
+
+        results["children"].append({
+            "plottable": "longitude" in da.cf.coords,
+            "id": var,
+            "label": da.attrs.get("long_name", da.attrs.get("name", var))
+        })
+
+    return results
